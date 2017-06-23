@@ -30,10 +30,14 @@ public class JetMapWordCount {
 
         String sourceMap = args[0];
         String sinkMap = args[1];
+        int parallelism = Integer.parseInt(args[2]);
+        int sinkParallelism = Integer.parseInt(args[3]);
+        System.out.println("JetWordCount with parameters: "
+                + sourceMap + " " + sinkMap + " " + parallelism + " " + sinkParallelism);
 
         DAG dag = new DAG();
 
-        Vertex producer = dag.newVertex("reader", readMap(sourceMap)).localParallelism(3);
+        Vertex producer = dag.newVertex("reader", readMap(sourceMap)).localParallelism(parallelism);
 
         Vertex tokenizer = dag.newVertex("tokenizer",
                 flatMap((Map.Entry<?, String> entry) -> {
@@ -47,7 +51,7 @@ public class JetMapWordCount {
 
         // (word, count) -> (word, count)
         Vertex combine = dag.newVertex("combine", combineByKey(counting()));
-        Vertex consumer = dag.newVertex("writer", writeMap(sinkMap)).localParallelism(1);
+        Vertex consumer = dag.newVertex("writer", writeMap(sinkMap)).localParallelism(sinkParallelism);
 
         dag.edge(Edge.between(producer, tokenizer))
            .edge(between(tokenizer, accumulate)

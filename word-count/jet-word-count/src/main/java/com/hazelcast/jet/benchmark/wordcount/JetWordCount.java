@@ -31,6 +31,10 @@ public class JetWordCount {
 
         String inputPath = args[0];
         String outputPath = args[1] + "_" + System.currentTimeMillis();
+        int parallelism = Integer.parseInt(args[2]);
+        int sinkParallelism = Integer.parseInt(args[3]);
+        System.out.println("JetWordCount with parameters: "
+                + inputPath + " " + outputPath + " " + parallelism + " " + sinkParallelism);
 
         DAG dag = new DAG();
         JobConf conf = new JobConf();
@@ -40,7 +44,7 @@ public class JetWordCount {
         TextOutputFormat.setOutputPath(conf, new Path(outputPath));
 
         Vertex producer = dag.newVertex("reader", readHdfs(conf,
-                (k, v) -> v.toString())).localParallelism(3);
+                (k, v) -> v.toString())).localParallelism(parallelism);
 
         Vertex tokenizer = dag.newVertex("tokenizer",
                 flatMap((String line) -> {
@@ -54,7 +58,7 @@ public class JetWordCount {
 
         // (word, count) -> (word, count)
         Vertex combine = dag.newVertex("combine", combineByKey(counting()));
-        Vertex consumer = dag.newVertex("writer", writeHdfs(conf)).localParallelism(1);
+        Vertex consumer = dag.newVertex("writer", writeHdfs(conf)).localParallelism(sinkParallelism);
 
         dag.edge(Edge.between(producer, tokenizer))
            .edge(between(tokenizer, accumulate)

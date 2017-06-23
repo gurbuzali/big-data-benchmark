@@ -4,10 +4,10 @@ import com.hazelcast.jet.AggregateOperation;
 import com.hazelcast.jet.AggregateOperations;
 import com.hazelcast.jet.DAG;
 import com.hazelcast.jet.JetInstance;
-import com.hazelcast.jet.PunctuationPolicies;
 import com.hazelcast.jet.TimestampKind;
 import com.hazelcast.jet.TimestampedEntry;
 import com.hazelcast.jet.Vertex;
+import com.hazelcast.jet.WatermarkPolicies;
 import com.hazelcast.jet.WindowDefinition;
 import com.hazelcast.jet.accumulator.LongAccumulator;
 import com.hazelcast.jet.server.JetBootstrap;
@@ -25,7 +25,7 @@ import static com.hazelcast.jet.function.DistributedFunctions.entryValue;
 import static com.hazelcast.jet.processor.KafkaProcessors.streamKafka;
 import static com.hazelcast.jet.processor.Processors.accumulateByFrame;
 import static com.hazelcast.jet.processor.Processors.combineToSlidingWindow;
-import static com.hazelcast.jet.processor.Processors.insertPunctuation;
+import static com.hazelcast.jet.processor.Processors.insertWatermarks;
 import static com.hazelcast.jet.processor.Processors.map;
 import static com.hazelcast.jet.processor.Sinks.writeFile;
 import static java.lang.System.currentTimeMillis;
@@ -55,10 +55,9 @@ public class JetTradeMonitor {
 
         DAG dag = new DAG();
         Vertex readKafka = dag.newVertex("read-kafka", streamKafka(kafkaProps, topic))
-                .localParallelism(4);
+                              .localParallelism(4);
         Vertex extractTrade = dag.newVertex("extract-trade", map(entryValue()));
-        Vertex insertPunctuation = dag.newVertex("insert-punctuation",
-                insertPunctuation(Trade::getTime, () -> PunctuationPolicies.withFixedLag(lagMs).throttleByFrame(windowDef)));
+        Vertex insertPunctuation = null;
         Vertex accumulateByF = dag.newVertex("accumulate-by-frame",
                 accumulateByFrame(Trade::getTicker, Trade::getTime, TimestampKind.EVENT, windowDef, counting));
         Vertex slidingW = dag.newVertex("sliding-window", combineToSlidingWindow(windowDef, counting));
@@ -76,7 +75,7 @@ public class JetTradeMonitor {
                 .edge(between(extractTrade, insertPunctuation).isolated())
                 .edge(between(insertPunctuation, accumulateByF).partitioned(Trade::getTicker, HASH_CODE))
                 .edge(between(accumulateByF, slidingW).partitioned(entryKey())
-                                                 .distributed())
+                                                      .distributed())
                 .edge(between(slidingW, formatOutput).isolated())
                 .edge(between(formatOutput, fileSink));
 
